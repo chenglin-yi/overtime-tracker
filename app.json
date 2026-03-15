@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "加班记",
+    "slug": "overtime-tracker",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.ycl666.overtimetracker"
+    },
+    "web": {},
+    "plugins": [
+      "expo-sharing",
+      "expo-build-properties"
+    ]
+  }
+}
