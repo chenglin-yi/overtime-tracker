@@ -15,17 +15,17 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
     {
       title: '欢迎使用加班记',
       description: '一款简单实用的加班记录工具，让每一份付出都有据可查',
-      image: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=modern%20mobile%20app%20welcome%20screen%20with%20clock%20icon%20and%20professional%20design&image_size=portrait_16_9',
+      image: require('../../assets/banner1.jpg'),
     },
     {
       title: '一键打卡',
       description: '快速记录加班时间，自动计算加班时长，让记录更轻松',
-      image: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=mobile%20app%20interface%20with%20punch%20clock%20button%20and%20time%20display&image_size=portrait_16_9',
+      image: require('../../assets/banner2.jpg'),
     },
     {
       title: '数据统计',
       description: '多维度统计加班数据，支持导出报表，让汇报更专业',
-      image: 'https://trae-api-cn.mchost.guru/api/ide/v1/text_to_image?prompt=mobile%20app%20dashboard%20with%20charts%20and%20statistics&image_size=portrait_16_9',
+      image: require('../../assets/banner3.jpg'),
     },
   ];
 
@@ -66,7 +66,7 @@ const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }) => {
       >
         {slides.map((slide, index) => (
           <View key={index} style={styles.slide}>
-            <Image source={{ uri: slide.image }} style={styles.image} />
+            <Image source={slide.image} style={styles.image} />
             <Text style={styles.title}>{slide.title}</Text>
             <Text style={styles.description}>{slide.description}</Text>
           </View>

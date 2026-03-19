@@ -5,6 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png", 
     "assetBundlePatterns": [
       "**/*"
     ],
@@ -18,6 +19,11 @@
     "plugins": [
       "expo-sharing",
       "expo-build-properties"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "047fdd30-7710-4250-9130-3bb18f98fd63"
+      }
+    }
   }
 }

@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
 import { Button, Card, Text, Switch, List, Divider, Modal, TextInput, IconButton, ProgressBar } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as XLSX from 'xlsx';
@@ -112,7 +112,7 @@ const SettingsScreen = () => {
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
       
       await FileSystem.writeAsStringAsync(fileUri, excelBuffer, {
-        encoding: FileSystem.EncodingType.Base64
+        encoding: 'base64'
       });
       
       setProgress(1);
