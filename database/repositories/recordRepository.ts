@@ -15,49 +15,78 @@ export const recordRepository = {
         return record;
       }
 
-      return new Promise((resolve, reject) => {
-        if (db.transaction) {
-          // 旧版本 API
-          db.transaction(tx => {
-            tx.executeSql(
-              `INSERT INTO overtime_records (id, date, punch_time, work_start_morning, work_end_morning, work_start_afternoon, work_end_afternoon, overtime_minutes, reason, is_makeup, makeup_note, created_at, updated_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-              [
-                record.id,
-                record.date,
-                record.punchTime,
-                record.workStartMorning,
-                record.workEndMorning,
-                record.workStartAfternoon,
-                record.workEndAfternoon,
-                record.overtimeMinutes,
-                record.reason,
-                record.isMakeup ? 1 : 0,
-                record.makeupNote,
-                record.createdAt,
-                record.updatedAt
-              ],
-              (_, { rowsAffected }) => {
-                if (rowsAffected > 0) {
-                  resolve(record);
-                } else {
-                  console.log('Insert failed, using memory record');
-                  resolve(record); // 即使插入失败也返回内存中的记录
-                }
-              },
-              (_, error) => {
-                console.error('Error creating record:', error);
-                resolve(record); // 即使失败也返回内存中的记录
-                return false;
-              }
-            );
+      try {
+        console.log('Database object in create:', db);
+        console.log('Database object methods in create:', Object.keys(db));
+        
+        const sql = `INSERT INTO overtime_records (id, date, punch_time, work_start_morning, work_end_morning, work_start_afternoon, work_end_afternoon, overtime_minutes, reason, is_makeup, makeup_note, created_at, updated_at) 
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`;
+        const params = [
+          record.id,
+          record.date,
+          record.punchTime,
+          record.workStartMorning,
+          record.workEndMorning,
+          record.workStartAfternoon,
+          record.workEndAfternoon,
+          record.overtimeMinutes,
+          record.reason,
+          record.isMakeup ? 1 : 0,
+          record.makeupNote,
+          record.createdAt,
+          record.updatedAt
+        ];
+
+        if (db.runAsync) {
+          // 新版本 API（Expo SDK 55+）
+          console.log('Using runAsync method');
+          const execSql = `INSERT INTO overtime_records (id, date, punch_time, work_start_morning, work_end_morning, work_start_afternoon, work_end_afternoon, overtime_minutes, reason, is_makeup, makeup_note, created_at, updated_at) 
+                          VALUES ('${record.id}', '${record.date}', '${record.punchTime}', '${record.workStartMorning}', '${record.workEndMorning}', '${record.workStartAfternoon}', '${record.workEndAfternoon}', ${record.overtimeMinutes}, '${record.reason}', ${record.isMakeup ? 1 : 0}, ${record.makeupNote ? `'${record.makeupNote}'` : 'NULL'}, ${record.createdAt}, ${record.updatedAt});`;
+          await db.runAsync(execSql);
+        } else if (db.executeSqlAsync) {
+          // 新版本 API
+          console.log('Using executeSqlAsync method');
+          await db.executeSqlAsync(sql, params);
+        } else if (db.transactionAsync) {
+          // 新版本 API
+          console.log('Using transactionAsync method');
+          await db.transactionAsync(async (tx) => {
+            await tx.executeSqlAsync(sql, params);
           });
-        } else {
-          // 新版本 API 或 mock
-          console.log('Creating record in memory only (no transaction method)');
-          resolve(record);
+        } else if (db.transaction) {
+          // 旧版本 API
+          console.log('Using transaction method');
+          await new Promise<void>((resolve, reject) => {
+            db.transaction(tx => {
+              tx.executeSql(
+                sql,
+                params,
+                () => resolve(),
+                (_, error) => {
+                  console.error('Error creating record:', error);
+                  resolve(); // 即使失败也继续
+                  return false;
+                }
+              );
+            });
+          });
+        } else if (db.executeSql) {
+          // 新版本 API
+          console.log('Using new API: executeSql');
+          await db.executeSql(sql, params);
+        } else if (db.exec) {
+          // 其他支持 exec 的 API
+          console.log('Using exec method');
+          // 构建带参数的 SQL 语句
+          const execSql = `INSERT INTO overtime_records (id, date, punch_time, work_start_morning, work_end_morning, work_start_afternoon, work_end_afternoon, overtime_minutes, reason, is_makeup, makeup_note, created_at, updated_at) 
+                          VALUES ('${record.id}', '${record.date}', '${record.punchTime}', '${record.workStartMorning}', '${record.workEndMorning}', '${record.workStartAfternoon}', '${record.workEndAfternoon}', ${record.overtimeMinutes}, '${record.reason}', ${record.isMakeup ? 1 : 0}, ${record.makeupNote ? `'${record.makeupNote}'` : 'NULL'}, ${record.createdAt}, ${record.updatedAt});`;
+          db.exec(execSql);
         }
-      });
+        return record;
+      } catch (error) {
+        console.error('Error creating record in database:', error);
+        return record;
+      }
     } catch (error) {
       console.error('Error in createRecord:', error);
       return record;
@@ -73,48 +102,156 @@ export const recordRepository = {
         return memoryRecords.filter(record => record.date === date);
       }
 
-      return new Promise((resolve, reject) => {
-        if (db.transaction) {
-          // 旧版本 API
-          db.transaction(tx => {
-            tx.executeSql(
-              'SELECT * FROM overtime_records WHERE date = ? ORDER BY punch_time DESC;',
-              [date],
-              (_, { rows }) => {
-                const records: OvertimeRecord[] = [];
-                for (let i = 0; i < rows.length; i++) {
-                  const row = rows.item(i);
-                  records.push({
-                    id: row.id,
-                    date: row.date,
-                    punchTime: row.punch_time,
-                    workStartMorning: row.work_start_morning,
-                    workEndMorning: row.work_end_morning,
-                    workStartAfternoon: row.work_start_afternoon,
-                    workEndAfternoon: row.work_end_afternoon,
-                    overtimeMinutes: row.overtime_minutes,
-                    reason: row.reason,
-                    isMakeup: row.is_makeup === 1,
-                    makeupNote: row.makeup_note,
-                    createdAt: row.created_at,
-                    updatedAt: row.updated_at
-                  });
-                }
-                resolve(records);
-              },
-              (_, error) => {
-                console.error('Error getting records by date:', error);
-                resolve(memoryRecords.filter(record => record.date === date));
-                return false;
+      try {
+        if (db.getFirstAsync) {
+          // 新版本 API（Expo SDK 55+）
+          console.log('Using getFirstAsync method');
+          const result = await db.getAllAsync(`SELECT * FROM overtime_records WHERE date = '${date}' ORDER BY punch_time DESC;`);
+          const records: OvertimeRecord[] = [];
+          if (result) {
+            for (const row of result) {
+              records.push({
+                id: row.id,
+                date: row.date,
+                punchTime: row.punch_time,
+                workStartMorning: row.work_start_morning,
+                workEndMorning: row.work_end_morning,
+                workStartAfternoon: row.work_start_afternoon,
+                workEndAfternoon: row.work_end_afternoon,
+                overtimeMinutes: row.overtime_minutes,
+                reason: row.reason,
+                isMakeup: row.is_makeup === 1,
+                makeupNote: row.makeup_note,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              });
+            }
+          }
+          return records;
+        } else if (db.executeSqlAsync) {
+          // 新版本 API
+          console.log('Using executeSqlAsync method');
+          const result = await db.executeSqlAsync('SELECT * FROM overtime_records WHERE date = ? ORDER BY punch_time DESC;', [date]);
+          const records: OvertimeRecord[] = [];
+          if (result && result.rows) {
+            for (let i = 0; i < result.rows.length; i++) {
+              const row = result.rows.item(i);
+              records.push({
+                id: row.id,
+                date: row.date,
+                punchTime: row.punch_time,
+                workStartMorning: row.work_start_morning,
+                workEndMorning: row.work_end_morning,
+                workStartAfternoon: row.work_start_afternoon,
+                workEndAfternoon: row.work_end_afternoon,
+                overtimeMinutes: row.overtime_minutes,
+                reason: row.reason,
+                isMakeup: row.is_makeup === 1,
+                makeupNote: row.makeup_note,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              });
+            }
+          }
+          return records;
+        } else if (db.transactionAsync) {
+          // 新版本 API
+          console.log('Using transactionAsync method');
+          const records: OvertimeRecord[] = [];
+          await db.transactionAsync(async (tx) => {
+            const result = await tx.executeSqlAsync('SELECT * FROM overtime_records WHERE date = ? ORDER BY punch_time DESC;', [date]);
+            if (result && result.rows) {
+              for (let i = 0; i < result.rows.length; i++) {
+                const row = result.rows.item(i);
+                records.push({
+                  id: row.id,
+                  date: row.date,
+                  punchTime: row.punch_time,
+                  workStartMorning: row.work_start_morning,
+                  workEndMorning: row.work_end_morning,
+                  workStartAfternoon: row.work_start_afternoon,
+                  workEndAfternoon: row.work_end_afternoon,
+                  overtimeMinutes: row.overtime_minutes,
+                  reason: row.reason,
+                  isMakeup: row.is_makeup === 1,
+                  makeupNote: row.makeup_note,
+                  createdAt: row.created_at,
+                  updatedAt: row.updated_at
+                });
               }
-            );
+            }
           });
+          return records;
+        } else if (db.transaction) {
+          // 旧版本 API
+          return await new Promise<OvertimeRecord[]>((resolve, reject) => {
+            db.transaction(tx => {
+              tx.executeSql(
+                'SELECT * FROM overtime_records WHERE date = ? ORDER BY punch_time DESC;',
+                [date],
+                (_, { rows }) => {
+                  const records: OvertimeRecord[] = [];
+                  for (let i = 0; i < rows.length; i++) {
+                    const row = rows.item(i);
+                    records.push({
+                      id: row.id,
+                      date: row.date,
+                      punchTime: row.punch_time,
+                      workStartMorning: row.work_start_morning,
+                      workEndMorning: row.work_end_morning,
+                      workStartAfternoon: row.work_start_afternoon,
+                      workEndAfternoon: row.work_end_afternoon,
+                      overtimeMinutes: row.overtime_minutes,
+                      reason: row.reason,
+                      isMakeup: row.is_makeup === 1,
+                      makeupNote: row.makeup_note,
+                      createdAt: row.created_at,
+                      updatedAt: row.updated_at
+                    });
+                  }
+                  resolve(records);
+                },
+                (_, error) => {
+                  console.error('Error getting records by date:', error);
+                  resolve(memoryRecords.filter(record => record.date === date));
+                  return false;
+                }
+              );
+            });
+          });
+        } else if (db.executeSql) {
+          // 新版本 API
+          console.log('Using new API: executeSql');
+          const result = await db.executeSql('SELECT * FROM overtime_records WHERE date = ? ORDER BY punch_time DESC;', [date]);
+          const records: OvertimeRecord[] = [];
+          for (let i = 0; i < result.rows.length; i++) {
+            const row = result.rows.item(i);
+            records.push({
+              id: row.id,
+              date: row.date,
+              punchTime: row.punch_time,
+              workStartMorning: row.work_start_morning,
+              workEndMorning: row.work_end_morning,
+              workStartAfternoon: row.work_start_afternoon,
+              workEndAfternoon: row.work_end_afternoon,
+              overtimeMinutes: row.overtime_minutes,
+              reason: row.reason,
+              isMakeup: row.is_makeup === 1,
+              makeupNote: row.makeup_note,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at
+            });
+          }
+          return records;
         } else {
-          // 新版本 API 或 mock
-          console.log('Getting records from memory (no transaction method)');
-          resolve(memoryRecords.filter(record => record.date === date));
+          // 其他情况
+          console.log('Getting records from memory (no transaction or executeSql method)');
+          return memoryRecords.filter(record => record.date === date);
         }
-      });
+      } catch (error) {
+        console.error('Error getting records by date:', error);
+        return memoryRecords.filter(record => record.date === date);
+      }
     } catch (error) {
       console.error('Error in getByDate:', error);
       return memoryRecords.filter(record => record.date === date);
@@ -132,52 +269,162 @@ export const recordRepository = {
         );
       }
 
-      return new Promise((resolve, reject) => {
-        if (db.transaction) {
-          // 旧版本 API
-          db.transaction(tx => {
-            tx.executeSql(
-              'SELECT * FROM overtime_records WHERE date >= ? AND date <= ? ORDER BY date DESC, punch_time DESC;',
-              [startDate, endDate],
-              (_, { rows }) => {
-                const records: OvertimeRecord[] = [];
-                for (let i = 0; i < rows.length; i++) {
-                  const row = rows.item(i);
-                  records.push({
-                    id: row.id,
-                    date: row.date,
-                    punchTime: row.punch_time,
-                    workStartMorning: row.work_start_morning,
-                    workEndMorning: row.work_end_morning,
-                    workStartAfternoon: row.work_start_afternoon,
-                    workEndAfternoon: row.work_end_afternoon,
-                    overtimeMinutes: row.overtime_minutes,
-                    reason: row.reason,
-                    isMakeup: row.is_makeup === 1,
-                    makeupNote: row.makeup_note,
-                    createdAt: row.created_at,
-                    updatedAt: row.updated_at
-                  });
-                }
-                resolve(records);
-              },
-              (_, error) => {
-                console.error('Error getting records by date range:', error);
-                resolve(memoryRecords.filter(record => 
-                  record.date >= startDate && record.date <= endDate
-                ));
-                return false;
+      try {
+        if (db.getFirstAsync) {
+          // 新版本 API（Expo SDK 55+）
+          console.log('Using getFirstAsync method');
+          const result = await db.getAllAsync(`SELECT * FROM overtime_records WHERE date >= '${startDate}' AND date <= '${endDate}' ORDER BY date DESC, punch_time DESC;`);
+          const records: OvertimeRecord[] = [];
+          if (result) {
+            for (const row of result) {
+              records.push({
+                id: row.id,
+                date: row.date,
+                punchTime: row.punch_time,
+                workStartMorning: row.work_start_morning,
+                workEndMorning: row.work_end_morning,
+                workStartAfternoon: row.work_start_afternoon,
+                workEndAfternoon: row.work_end_afternoon,
+                overtimeMinutes: row.overtime_minutes,
+                reason: row.reason,
+                isMakeup: row.is_makeup === 1,
+                makeupNote: row.makeup_note,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              });
+            }
+          }
+          return records;
+        } else if (db.executeSqlAsync) {
+          // 新版本 API
+          console.log('Using executeSqlAsync method');
+          const result = await db.executeSqlAsync('SELECT * FROM overtime_records WHERE date >= ? AND date <= ? ORDER BY date DESC, punch_time DESC;', [startDate, endDate]);
+          const records: OvertimeRecord[] = [];
+          if (result && result.rows) {
+            for (let i = 0; i < result.rows.length; i++) {
+              const row = result.rows.item(i);
+              records.push({
+                id: row.id,
+                date: row.date,
+                punchTime: row.punch_time,
+                workStartMorning: row.work_start_morning,
+                workEndMorning: row.work_end_morning,
+                workStartAfternoon: row.work_start_afternoon,
+                workEndAfternoon: row.work_end_afternoon,
+                overtimeMinutes: row.overtime_minutes,
+                reason: row.reason,
+                isMakeup: row.is_makeup === 1,
+                makeupNote: row.makeup_note,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              });
+            }
+          }
+          return records;
+        } else if (db.transactionAsync) {
+          // 新版本 API
+          console.log('Using transactionAsync method');
+          const records: OvertimeRecord[] = [];
+          await db.transactionAsync(async (tx) => {
+            const result = await tx.executeSqlAsync('SELECT * FROM overtime_records WHERE date >= ? AND date <= ? ORDER BY date DESC, punch_time DESC;', [startDate, endDate]);
+            if (result && result.rows) {
+              for (let i = 0; i < result.rows.length; i++) {
+                const row = result.rows.item(i);
+                records.push({
+                  id: row.id,
+                  date: row.date,
+                  punchTime: row.punch_time,
+                  workStartMorning: row.work_start_morning,
+                  workEndMorning: row.work_end_morning,
+                  workStartAfternoon: row.work_start_afternoon,
+                  workEndAfternoon: row.work_end_afternoon,
+                  overtimeMinutes: row.overtime_minutes,
+                  reason: row.reason,
+                  isMakeup: row.is_makeup === 1,
+                  makeupNote: row.makeup_note,
+                  createdAt: row.created_at,
+                  updatedAt: row.updated_at
+                });
               }
-            );
+            }
           });
+          return records;
+        } else if (db.transaction) {
+          // 旧版本 API
+          return await new Promise<OvertimeRecord[]>((resolve, reject) => {
+            db.transaction(tx => {
+              tx.executeSql(
+                'SELECT * FROM overtime_records WHERE date >= ? AND date <= ? ORDER BY date DESC, punch_time DESC;',
+                [startDate, endDate],
+                (_, { rows }) => {
+                  const records: OvertimeRecord[] = [];
+                  for (let i = 0; i < rows.length; i++) {
+                    const row = rows.item(i);
+                    records.push({
+                      id: row.id,
+                      date: row.date,
+                      punchTime: row.punch_time,
+                      workStartMorning: row.work_start_morning,
+                      workEndMorning: row.work_end_morning,
+                      workStartAfternoon: row.work_start_afternoon,
+                      workEndAfternoon: row.work_end_afternoon,
+                      overtimeMinutes: row.overtime_minutes,
+                      reason: row.reason,
+                      isMakeup: row.is_makeup === 1,
+                      makeupNote: row.makeup_note,
+                      createdAt: row.created_at,
+                      updatedAt: row.updated_at
+                    });
+                  }
+                  resolve(records);
+                },
+                (_, error) => {
+                  console.error('Error getting records by date range:', error);
+                  resolve(memoryRecords.filter(record => 
+                    record.date >= startDate && record.date <= endDate
+                  ));
+                  return false;
+                }
+              );
+            });
+          });
+        } else if (db.executeSql) {
+          // 新版本 API
+          console.log('Using new API: executeSql');
+          const result = await db.executeSql('SELECT * FROM overtime_records WHERE date >= ? AND date <= ? ORDER BY date DESC, punch_time DESC;', [startDate, endDate]);
+          const records: OvertimeRecord[] = [];
+          for (let i = 0; i < result.rows.length; i++) {
+            const row = result.rows.item(i);
+            records.push({
+              id: row.id,
+              date: row.date,
+              punchTime: row.punch_time,
+              workStartMorning: row.work_start_morning,
+              workEndMorning: row.work_end_morning,
+              workStartAfternoon: row.work_start_afternoon,
+              workEndAfternoon: row.work_end_afternoon,
+              overtimeMinutes: row.overtime_minutes,
+              reason: row.reason,
+              isMakeup: row.is_makeup === 1,
+              makeupNote: row.makeup_note,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at
+            });
+          }
+          return records;
         } else {
-          // 新版本 API 或 mock
-          console.log('Getting records from memory (no transaction method)');
-          resolve(memoryRecords.filter(record => 
+          // 其他情况
+          console.log('Getting records from memory (no transaction or executeSql method)');
+          return memoryRecords.filter(record => 
             record.date >= startDate && record.date <= endDate
-          ));
+          );
         }
-      });
+      } catch (error) {
+        console.error('Error getting records by date range:', error);
+        return memoryRecords.filter(record => 
+          record.date >= startDate && record.date <= endDate
+        );
+      }
     } catch (error) {
       console.error('Error in getByDateRange:', error);
       return memoryRecords.filter(record => 
@@ -195,49 +442,161 @@ export const recordRepository = {
         return memoryRecords;
       }
 
-      return new Promise((resolve, reject) => {
-        if (db.transaction) {
-          // 旧版本 API
-          db.transaction(tx => {
-            tx.executeSql(
-              'SELECT * FROM overtime_records ORDER BY date DESC, punch_time DESC;',
-              [],
-              (_, { rows }) => {
-                const records: OvertimeRecord[] = [];
-                for (let i = 0; i < rows.length; i++) {
-                  const row = rows.item(i);
-                  records.push({
-                    id: row.id,
-                    date: row.date,
-                    punchTime: row.punch_time,
-                    workStartMorning: row.work_start_morning,
-                    workEndMorning: row.work_end_morning,
-                    workStartAfternoon: row.work_start_afternoon,
-                    workEndAfternoon: row.work_end_afternoon,
-                    overtimeMinutes: row.overtime_minutes,
-                    reason: row.reason,
-                    isMakeup: row.is_makeup === 1,
-                    makeupNote: row.makeup_note,
-                    createdAt: row.created_at,
-                    updatedAt: row.updated_at
-                  });
-                }
-                memoryRecords = records; // 同步到内存
-                resolve(records);
-              },
-              (_, error) => {
-                console.error('Error getting all records:', error);
-                resolve(memoryRecords);
-                return false;
+      try {
+        if (db.getFirstAsync) {
+          // 新版本 API（Expo SDK 55+）
+          console.log('Using getFirstAsync method');
+          const result = await db.getAllAsync('SELECT * FROM overtime_records ORDER BY date DESC, punch_time DESC;');
+          const records: OvertimeRecord[] = [];
+          if (result) {
+            for (const row of result) {
+              records.push({
+                id: row.id,
+                date: row.date,
+                punchTime: row.punch_time,
+                workStartMorning: row.work_start_morning,
+                workEndMorning: row.work_end_morning,
+                workStartAfternoon: row.work_start_afternoon,
+                workEndAfternoon: row.work_end_afternoon,
+                overtimeMinutes: row.overtime_minutes,
+                reason: row.reason,
+                isMakeup: row.is_makeup === 1,
+                makeupNote: row.makeup_note,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              });
+            }
+          }
+          memoryRecords = records; // 同步到内存
+          return records;
+        } else if (db.executeSqlAsync) {
+          // 新版本 API
+          console.log('Using executeSqlAsync method');
+          const result = await db.executeSqlAsync('SELECT * FROM overtime_records ORDER BY date DESC, punch_time DESC;', []);
+          const records: OvertimeRecord[] = [];
+          if (result && result.rows) {
+            for (let i = 0; i < result.rows.length; i++) {
+              const row = result.rows.item(i);
+              records.push({
+                id: row.id,
+                date: row.date,
+                punchTime: row.punch_time,
+                workStartMorning: row.work_start_morning,
+                workEndMorning: row.work_end_morning,
+                workStartAfternoon: row.work_start_afternoon,
+                workEndAfternoon: row.work_end_afternoon,
+                overtimeMinutes: row.overtime_minutes,
+                reason: row.reason,
+                isMakeup: row.is_makeup === 1,
+                makeupNote: row.makeup_note,
+                createdAt: row.created_at,
+                updatedAt: row.updated_at
+              });
+            }
+          }
+          memoryRecords = records; // 同步到内存
+          return records;
+        } else if (db.transactionAsync) {
+          // 新版本 API
+          console.log('Using transactionAsync method');
+          const records: OvertimeRecord[] = [];
+          await db.transactionAsync(async (tx) => {
+            const result = await tx.executeSqlAsync('SELECT * FROM overtime_records ORDER BY date DESC, punch_time DESC;', []);
+            if (result && result.rows) {
+              for (let i = 0; i < result.rows.length; i++) {
+                const row = result.rows.item(i);
+                records.push({
+                  id: row.id,
+                  date: row.date,
+                  punchTime: row.punch_time,
+                  workStartMorning: row.work_start_morning,
+                  workEndMorning: row.work_end_morning,
+                  workStartAfternoon: row.work_start_afternoon,
+                  workEndAfternoon: row.work_end_afternoon,
+                  overtimeMinutes: row.overtime_minutes,
+                  reason: row.reason,
+                  isMakeup: row.is_makeup === 1,
+                  makeupNote: row.makeup_note,
+                  createdAt: row.created_at,
+                  updatedAt: row.updated_at
+                });
               }
-            );
+            }
           });
+          memoryRecords = records; // 同步到内存
+          return records;
+        } else if (db.transaction) {
+          // 旧版本 API
+          return await new Promise<OvertimeRecord[]>((resolve, reject) => {
+            db.transaction(tx => {
+              tx.executeSql(
+                'SELECT * FROM overtime_records ORDER BY date DESC, punch_time DESC;',
+                [],
+                (_, { rows }) => {
+                  const records: OvertimeRecord[] = [];
+                  for (let i = 0; i < rows.length; i++) {
+                    const row = rows.item(i);
+                    records.push({
+                      id: row.id,
+                      date: row.date,
+                      punchTime: row.punch_time,
+                      workStartMorning: row.work_start_morning,
+                      workEndMorning: row.work_end_morning,
+                      workStartAfternoon: row.work_start_afternoon,
+                      workEndAfternoon: row.work_end_afternoon,
+                      overtimeMinutes: row.overtime_minutes,
+                      reason: row.reason,
+                      isMakeup: row.is_makeup === 1,
+                      makeupNote: row.makeup_note,
+                      createdAt: row.created_at,
+                      updatedAt: row.updated_at
+                    });
+                  }
+                  memoryRecords = records; // 同步到内存
+                  resolve(records);
+                },
+                (_, error) => {
+                  console.error('Error getting all records:', error);
+                  resolve(memoryRecords);
+                  return false;
+                }
+              );
+            });
+          });
+        } else if (db.executeSql) {
+          // 新版本 API
+          console.log('Using new API: executeSql');
+          const result = await db.executeSql('SELECT * FROM overtime_records ORDER BY date DESC, punch_time DESC;', []);
+          const records: OvertimeRecord[] = [];
+          for (let i = 0; i < result.rows.length; i++) {
+            const row = result.rows.item(i);
+            records.push({
+              id: row.id,
+              date: row.date,
+              punchTime: row.punch_time,
+              workStartMorning: row.work_start_morning,
+              workEndMorning: row.work_end_morning,
+              workStartAfternoon: row.work_start_afternoon,
+              workEndAfternoon: row.work_end_afternoon,
+              overtimeMinutes: row.overtime_minutes,
+              reason: row.reason,
+              isMakeup: row.is_makeup === 1,
+              makeupNote: row.makeup_note,
+              createdAt: row.created_at,
+              updatedAt: row.updated_at
+            });
+          }
+          memoryRecords = records; // 同步到内存
+          return records;
         } else {
-          // 新版本 API 或 mock
-          console.log('Getting all records from memory (no transaction method)');
-          resolve(memoryRecords);
+          // 其他情况
+          console.log('Getting all records from memory (no transaction or executeSql method)');
+          return memoryRecords;
         }
-      });
+      } catch (error) {
+        console.error('Error getting all records:', error);
+        return memoryRecords;
+      }
     } catch (error) {
       console.error('Error in getAll:', error);
       return memoryRecords;
@@ -263,78 +622,120 @@ export const recordRepository = {
         return memoryRecords[index] || null;
       }
 
-      return new Promise((resolve, reject) => {
+      try {
+        // 先获取原记录
+        let updatedRecord: OvertimeRecord | null = null;
+        
         if (db.transaction) {
-          // 先获取原记录
-          db.transaction(tx => {
-            tx.executeSql(
-              'SELECT * FROM overtime_records WHERE id = ?;',
-              [id],
-              (_, { rows }) => {
-                if (rows.length === 0) {
-                  resolve(memoryRecords[index] || null);
-                  return;
-                }
-
-                const oldRecord = rows.item(0);
-                const updatedRecord: OvertimeRecord = {
-                  id: oldRecord.id,
-                  date: oldRecord.date,
-                  punchTime: oldRecord.punch_time,
-                  workStartMorning: oldRecord.work_start_morning,
-                  workEndMorning: oldRecord.work_end_morning,
-                  workStartAfternoon: oldRecord.work_start_afternoon,
-                  workEndAfternoon: oldRecord.work_end_afternoon,
-                  overtimeMinutes: oldRecord.overtime_minutes,
-                  reason: oldRecord.reason,
-                  isMakeup: oldRecord.is_makeup === 1,
-                  makeupNote: oldRecord.makeup_note,
-                  createdAt: oldRecord.created_at,
-                  updatedAt: Date.now(),
-                  ...updates
-                };
-
-                tx.executeSql(
-                  `UPDATE overtime_records SET 
-                    reason = ?, 
-                    overtime_minutes = ?, 
-                    makeup_note = ?, 
-                    updated_at = ? 
-                   WHERE id = ?;`,
-                  [
-                    updatedRecord.reason,
-                    updatedRecord.overtimeMinutes,
-                    updatedRecord.makeupNote,
-                    updatedRecord.updatedAt,
-                    id
-                  ],
-                  (_, { rowsAffected }) => {
-                    if (rowsAffected > 0) {
-                      resolve(updatedRecord);
-                    } else {
-                      resolve(memoryRecords[index] || updatedRecord);
-                    }
-                  },
-                  (_, error) => {
-                    console.error('Error updating record:', error);
-                    resolve(memoryRecords[index] || updatedRecord);
-                    return false;
+          // 旧版本 API
+          await new Promise<void>((resolve, reject) => {
+            db.transaction(tx => {
+              tx.executeSql(
+                'SELECT * FROM overtime_records WHERE id = ?;',
+                [id],
+                (_, { rows }) => {
+                  if (rows.length === 0) {
+                    resolve();
+                    return;
                   }
-                );
-              },
-              (_, error) => {
-                console.error('Error getting record for update:', error);
-                resolve(memoryRecords[index] || null);
-                return false;
-              }
-            );
+
+                  const oldRecord = rows.item(0);
+                  updatedRecord = {
+                    id: oldRecord.id,
+                    date: oldRecord.date,
+                    punchTime: oldRecord.punch_time,
+                    workStartMorning: oldRecord.work_start_morning,
+                    workEndMorning: oldRecord.work_end_morning,
+                    workStartAfternoon: oldRecord.work_start_afternoon,
+                    workEndAfternoon: oldRecord.work_end_afternoon,
+                    overtimeMinutes: oldRecord.overtime_minutes,
+                    reason: oldRecord.reason,
+                    isMakeup: oldRecord.is_makeup === 1,
+                    makeupNote: oldRecord.makeup_note,
+                    createdAt: oldRecord.created_at,
+                    updatedAt: Date.now(),
+                    ...updates
+                  };
+
+                  tx.executeSql(
+                    `UPDATE overtime_records SET 
+                      reason = ?, 
+                      overtime_minutes = ?, 
+                      makeup_note = ?, 
+                      updated_at = ? 
+                     WHERE id = ?;`,
+                    [
+                      updatedRecord.reason,
+                      updatedRecord.overtimeMinutes,
+                      updatedRecord.makeupNote,
+                      updatedRecord.updatedAt,
+                      id
+                    ],
+                    () => resolve(),
+                    (_, error) => {
+                      console.error('Error updating record:', error);
+                      resolve();
+                      return false;
+                    }
+                  );
+                },
+                (_, error) => {
+                  console.error('Error getting record for update:', error);
+                  resolve();
+                  return false;
+                }
+              );
+            });
           });
+        } else if (db.executeSql) {
+          // 新版本 API
+          console.log('Using new API: executeSql');
+          const result = await db.executeSql('SELECT * FROM overtime_records WHERE id = ?;', [id]);
+          if (result.rows.length > 0) {
+            const oldRecord = result.rows.item(0);
+            updatedRecord = {
+              id: oldRecord.id,
+              date: oldRecord.date,
+              punchTime: oldRecord.punch_time,
+              workStartMorning: oldRecord.work_start_morning,
+              workEndMorning: oldRecord.work_end_morning,
+              workStartAfternoon: oldRecord.work_start_afternoon,
+              workEndAfternoon: oldRecord.work_end_afternoon,
+              overtimeMinutes: oldRecord.overtime_minutes,
+              reason: oldRecord.reason,
+              isMakeup: oldRecord.is_makeup === 1,
+              makeupNote: oldRecord.makeup_note,
+              createdAt: oldRecord.created_at,
+              updatedAt: Date.now(),
+              ...updates
+            };
+
+            await db.executeSql(
+              `UPDATE overtime_records SET 
+                reason = ?, 
+                overtime_minutes = ?, 
+                makeup_note = ?, 
+                updated_at = ? 
+               WHERE id = ?;`,
+              [
+                updatedRecord.reason,
+                updatedRecord.overtimeMinutes,
+                updatedRecord.makeupNote,
+                updatedRecord.updatedAt,
+                id
+              ]
+            );
+          }
         } else {
-          // 新版本 API 或 mock
-          console.log('Updating record in memory only (no transaction method)');
-          resolve(memoryRecords[index] || null);
+          // 其他情况
+          console.log('Updating record in memory only (no transaction or executeSql method)');
         }
-      });
+
+        return updatedRecord || memoryRecords[index] || null;
+      } catch (error) {
+        console.error('Error updating record:', error);
+        return memoryRecords[index] || null;
+      }
     } catch (error) {
       console.error('Error in updateRecord:', error);
       const record = memoryRecords.find(r => r.id === id);
@@ -356,29 +757,36 @@ export const recordRepository = {
         return deletedFromMemory;
       }
 
-      return new Promise((resolve, reject) => {
+      try {
         if (db.transaction) {
           // 旧版本 API
-          db.transaction(tx => {
-            tx.executeSql(
-              'DELETE FROM overtime_records WHERE id = ?;',
-              [id],
-              (_, { rowsAffected }) => {
-                resolve(rowsAffected > 0 || deletedFromMemory);
-              },
-              (_, error) => {
-                console.error('Error deleting record:', error);
-                resolve(deletedFromMemory);
-                return false;
-              }
-            );
+          await new Promise<void>((resolve, reject) => {
+            db.transaction(tx => {
+              tx.executeSql(
+                'DELETE FROM overtime_records WHERE id = ?;',
+                [id],
+                () => resolve(),
+                (_, error) => {
+                  console.error('Error deleting record:', error);
+                  resolve();
+                  return false;
+                }
+              );
+            });
           });
+        } else if (db.executeSql) {
+          // 新版本 API
+          console.log('Using new API: executeSql');
+          await db.executeSql('DELETE FROM overtime_records WHERE id = ?;', [id]);
         } else {
-          // 新版本 API 或 mock
-          console.log('Deleting record from memory only (no transaction method)');
-          resolve(deletedFromMemory);
+          // 其他情况
+          console.log('Deleting record from memory only (no transaction or executeSql method)');
         }
-      });
+        return deletedFromMemory;
+      } catch (error) {
+        console.error('Error deleting record:', error);
+        return deletedFromMemory;
+      }
     } catch (error) {
       console.error('Error in deleteRecord:', error);
       return false;

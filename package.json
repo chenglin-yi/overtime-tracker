@@ -1,6 +1,6 @@
 {
   "name": "overtime-tracker",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
@@ -38,6 +38,8 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@react-native-community/cli": "^20.1.2",
+    "@react-native/metro-config": "^0.84.1",
     "@types/react": "~19.2.10",
     "@types/uuid": "^9.0.7",
     "typescript": "^5.3.0"

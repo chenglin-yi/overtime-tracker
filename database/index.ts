@@ -3,87 +3,123 @@ import * as SQLite from 'expo-sqlite';
 let db: any = null;
 
 export const initDatabase = async () => {
-  return new Promise<void>((resolve, reject) => {
+  try {
+    console.log('Initializing database...');
+    
+    // 尝试使用新的 API 方式打开数据库
     try {
-      console.log('Initializing database...');
-      
-      // 尝试使用新的 API 方式打开数据库
-      try {
-        console.log('Using new API: openDatabaseSync');
-        db = SQLite.openDatabaseSync('overtime.db');
-      } catch (error) {
-        console.error('Error opening database with openDatabaseSync:', error);
-        console.log('expo-sqlite API not available, using mock');
-        // 创建一个 mock 数据库对象，以便应用可以继续运行
-        db = createMockDatabase();
-      }
-
-      console.log('Database opened successfully');
-
-      // 执行数据库初始化
-      if (db && db.transaction) {
-        console.log('Using transaction method');
-        db.transaction(tx => {
-          createTables(tx);
-        }, (error) => {
-          console.error('Transaction error:', error);
-          resolve(); // 即使出错也继续
-        }, () => {
-          console.log('Database initialized successfully');
-          resolve();
-        });
-      } else if (db && db.exec) {
-        console.log('Using exec method');
-        try {
-          const sql = `
-            CREATE TABLE IF NOT EXISTS overtime_records (
-              id TEXT PRIMARY KEY,
-              date TEXT NOT NULL,
-              punch_time TEXT NOT NULL,
-              work_start_morning TEXT NOT NULL,
-              work_end_morning TEXT NOT NULL,
-              work_start_afternoon TEXT NOT NULL,
-              work_end_afternoon TEXT NOT NULL,
-              overtime_minutes INTEGER NOT NULL,
-              reason TEXT NOT NULL,
-              is_makeup INTEGER NOT NULL,
-              makeup_note TEXT,
-              created_at INTEGER NOT NULL,
-              updated_at INTEGER NOT NULL
-            );
-            
-            CREATE TABLE IF NOT EXISTS user_settings (
-              id INTEGER PRIMARY KEY,
-              morning_start TEXT NOT NULL,
-              morning_end TEXT NOT NULL,
-              afternoon_start TEXT NOT NULL,
-              afternoon_end TEXT NOT NULL,
-              work_days TEXT NOT NULL,
-              reminder_enabled INTEGER NOT NULL,
-              reminder_time INTEGER,
-              updated_at INTEGER NOT NULL
-            );
-            
-            INSERT OR IGNORE INTO user_settings (id, morning_start, morning_end, afternoon_start, afternoon_end, work_days, reminder_enabled, reminder_time, updated_at) 
-            VALUES (1, '09:00', '12:00', '14:00', '18:00', '[1,2,3,4,5]', 1, 30, ${Date.now()});
-          `;
-          db.exec(sql);
-          console.log('Database initialized with exec');
-          resolve();
-        } catch (error) {
-          console.error('Exec error:', error);
-          resolve();
-        }
-      } else {
-        console.log('Using mock database');
-        resolve();
-      }
+      console.log('Using new API: openDatabaseSync');
+      db = SQLite.openDatabaseSync('overtime.db');
+      console.log('Database object:', db);
+      console.log('Database object methods:', Object.keys(db));
     } catch (error) {
-      console.error('Database initialization error:', error);
-      // 即使数据库初始化失败，也继续运行应用
-      resolve();
+      console.error('Error opening database with openDatabaseSync:', error);
+      console.log('expo-sqlite API not available, using mock');
+      // 创建一个 mock 数据库对象，以便应用可以继续运行
+      db = createMockDatabase();
     }
-  });
+
+    console.log('Database opened successfully');
+    console.log('Final database object:', db);
+    console.log('Final database object methods:', Object.keys(db));
+
+    // 执行数据库初始化
+    if (db) {
+      try {
+        // 分别执行每个 SQL 语句
+        const createRecordsTable = `
+          CREATE TABLE IF NOT EXISTS overtime_records (
+            id TEXT PRIMARY KEY,
+            date TEXT NOT NULL,
+            punch_time TEXT NOT NULL,
+            work_start_morning TEXT NOT NULL,
+            work_end_morning TEXT NOT NULL,
+            work_start_afternoon TEXT NOT NULL,
+            work_end_afternoon TEXT NOT NULL,
+            overtime_minutes INTEGER NOT NULL,
+            reason TEXT NOT NULL,
+            is_makeup INTEGER NOT NULL,
+            makeup_note TEXT,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+          );
+        `;
+        
+        const createSettingsTable = `
+          CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY,
+            morning_start TEXT NOT NULL,
+            morning_end TEXT NOT NULL,
+            afternoon_start TEXT NOT NULL,
+            afternoon_end TEXT NOT NULL,
+            work_days TEXT NOT NULL,
+            reminder_enabled INTEGER NOT NULL,
+            reminder_time INTEGER,
+            updated_at INTEGER NOT NULL
+          );
+        `;
+        
+        const insertDefaultSettings = `
+          INSERT OR IGNORE INTO user_settings (id, morning_start, morning_end, afternoon_start, afternoon_end, work_days, reminder_enabled, reminder_time, updated_at) 
+          VALUES (1, '09:00', '12:00', '14:00', '18:00', '[1,2,3,4,5]', 1, 30, ${Date.now()});
+        `;
+        
+        // 尝试使用不同的方法执行 SQL 语句
+        if (db.execAsync) {
+          console.log('Using execAsync method');
+          await db.execAsync(createRecordsTable);
+          await db.execAsync(createSettingsTable);
+          await db.execAsync(insertDefaultSettings);
+        } else if (db.runAsync) {
+          console.log('Using runAsync method');
+          await db.runAsync(createRecordsTable);
+          await db.runAsync(createSettingsTable);
+          await db.runAsync(insertDefaultSettings);
+        } else if (db.executeSqlAsync) {
+          console.log('Using executeSqlAsync method');
+          await db.executeSqlAsync(createRecordsTable);
+          await db.executeSqlAsync(createSettingsTable);
+          await db.executeSqlAsync(insertDefaultSettings);
+        } else if (db.transactionAsync) {
+          console.log('Using transactionAsync method');
+          await db.transactionAsync(async (tx) => {
+            await tx.executeSqlAsync(createRecordsTable);
+            await tx.executeSqlAsync(createSettingsTable);
+            await tx.executeSqlAsync(insertDefaultSettings);
+          });
+        } else if (db.transaction) {
+          console.log('Using transaction method');
+          await new Promise<void>((resolve) => {
+            db.transaction(tx => {
+              tx.executeSql(createRecordsTable);
+              tx.executeSql(createSettingsTable);
+              tx.executeSql(insertDefaultSettings);
+            }, null, resolve);
+          });
+        } else if (db.exec) {
+          console.log('Using exec method');
+          db.exec(createRecordsTable);
+          db.exec(createSettingsTable);
+          db.exec(insertDefaultSettings);
+        } else if (db.executeSql) {
+          console.log('Using executeSql method');
+          db.executeSql(createRecordsTable);
+          db.executeSql(createSettingsTable);
+          db.executeSql(insertDefaultSettings);
+        } else {
+          console.log('No suitable method found to execute SQL');
+        }
+        
+        console.log('Database initialized successfully');
+      } catch (error) {
+        console.error('Error initializing database:', error);
+      }
+    } else {
+      console.log('Using mock database');
+    }
+  } catch (error) {
+    console.error('Database initialization error:', error);
+  }
 };
 
 function createTables(tx: any) {
