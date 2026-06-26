@@ -758,8 +758,26 @@ export const recordRepository = {
       }
 
       try {
-        if (db.transaction) {
+        console.log('Database object in delete:', db);
+        console.log('Database object methods in delete:', Object.keys(db));
+        
+        if (db.runAsync) {
+          // 新版本 API（Expo SDK 55+）
+          console.log('Using runAsync method for delete');
+          await db.runAsync(`DELETE FROM overtime_records WHERE id = '${id}';`);
+        } else if (db.executeSqlAsync) {
+          // 新版本 API
+          console.log('Using executeSqlAsync method for delete');
+          await db.executeSqlAsync('DELETE FROM overtime_records WHERE id = ?;', [id]);
+        } else if (db.transactionAsync) {
+          // 新版本 API
+          console.log('Using transactionAsync method for delete');
+          await db.transactionAsync(async (tx) => {
+            await tx.executeSqlAsync('DELETE FROM overtime_records WHERE id = ?;', [id]);
+          });
+        } else if (db.transaction) {
           // 旧版本 API
+          console.log('Using transaction method for delete');
           await new Promise<void>((resolve, reject) => {
             db.transaction(tx => {
               tx.executeSql(
@@ -776,15 +794,19 @@ export const recordRepository = {
           });
         } else if (db.executeSql) {
           // 新版本 API
-          console.log('Using new API: executeSql');
+          console.log('Using executeSql method for delete');
           await db.executeSql('DELETE FROM overtime_records WHERE id = ?;', [id]);
+        } else if (db.exec) {
+          // 其他支持 exec 的 API
+          console.log('Using exec method for delete');
+          db.exec(`DELETE FROM overtime_records WHERE id = '${id}';`);
         } else {
           // 其他情况
-          console.log('Deleting record from memory only (no transaction or executeSql method)');
+          console.log('Deleting record from memory only (no supported method)');
         }
         return deletedFromMemory;
       } catch (error) {
-        console.error('Error deleting record:', error);
+        console.error('Error deleting record from database:', error);
         return deletedFromMemory;
       }
     } catch (error) {

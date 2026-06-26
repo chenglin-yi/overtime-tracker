@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Platform } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Platform, PermissionsAndroid } from 'react-native';
 import { Button, Card, Text, Switch, List, Divider, Modal, TextInput, IconButton, ProgressBar } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import * as XLSX from 'xlsx';
@@ -102,30 +102,101 @@ const SettingsScreen = () => {
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       XLSX.utils.book_append_sheet(workbook, worksheet, '加班记录');
       
-      // 生成Excel文件
-      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
-      
       setProgress(0.8);
       
-      // 保存文件
-      const fileName = `加班记录_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-      
-      await FileSystem.writeAsStringAsync(fileUri, excelBuffer, {
-        encoding: 'base64'
-      });
+      // 处理不同平台的文件保存
+      try {
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+          // 在 Web 平台上使用下载方式
+          console.log('在 Web 平台上导出数据');
+          try {
+            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+            const url = URL.createObjectURL(excelBuffer);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `加班记录_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            link.click();
+            URL.revokeObjectURL(url);
+          } catch (blobError) {
+            console.error('Blob 创建失败:', blobError);
+            // 降级：使用 base64 字符串直接下载
+            const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+            const dataUrl = `data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,${excelBuffer}`;
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `加班记录_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            link.click();
+          }
+        } else {
+          // 在移动平台上使用 FileSystem 或直接分享
+          console.log('在移动平台上导出数据');
+          const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'base64' });
+          const fileName = `加班记录_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          
+          // 尝试不同的存储位置
+          const directories = [
+            FileSystem.documentDirectory,
+            FileSystem.cacheDirectory
+          ];
+          
+          let saved = false;
+          for (const directory of directories) {
+            if (directory) {
+              try {
+                console.log(`尝试使用目录: ${directory}`);
+                const fileUri = `${directory}${fileName}`;
+                
+                await FileSystem.writeAsStringAsync(fileUri,
+                  excelBuffer, {
+                    encoding: 'base64'
+                  }
+                );
+                
+                // 分享文件
+                if (await Sharing.isAvailableAsync()) {
+                  await Sharing.shareAsync(fileUri);
+                  saved = true;
+                  break;
+                } else {
+                  Alert.alert('提示', `文件已保存到: ${fileUri}`);
+                  saved = true;
+                  break;
+                }
+              } catch (dirError) {
+                console.error(`目录 ${directory} 保存失败:`, dirError);
+                // 继续尝试下一个目录
+              }
+            }
+          }
+          
+          if (!saved) {
+            // 所有目录都失败，显示错误信息
+            Alert.alert(
+              '导出失败',
+              '无法保存导出文件，请尝试以下方法：\n1. 确保应用有存储权限\n2. 检查设备存储空间是否充足\n3. 尝试在Web浏览器中打开应用导出数据',
+              [{ text: '确定', style: 'default' }]
+            );
+          }
+        }
+      } catch (platformError) {
+        console.error('平台特定保存失败:', platformError);
+        // 最终降级方案：显示错误信息并提供替代方案
+        Alert.alert(
+          '导出失败',
+          '无法保存导出文件，请尝试以下方法：\n1. 确保应用有存储权限\n2. 检查设备存储空间是否充足\n3. 尝试在Web浏览器中打开应用导出数据\n4. 尝试使用QQ等应用分享数据',
+          [{ text: '确定', style: 'default' }]
+        );
+        // 记录导出失败事件
+        analyticsService.trackExportData('excel', records.length);
+        throw platformError;
+      }
       
       setProgress(1);
       
       // 记录导出数据事件
       analyticsService.trackExportData('excel', records.length);
       
-      // 分享文件
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri);
-      } else {
-        Alert.alert('提示', `文件已保存到: ${fileUri}`);
-      }
+      Alert.alert('成功', '数据导出成功');
     } catch (error) {
       console.error('导出数据失败:', error);
       Alert.alert('错误', '导出数据失败，请重试');
@@ -154,19 +225,92 @@ const SettingsScreen = () => {
         records: records
       };
       
-      // 保存备份文件
-      const fileName = `加班记录备份_${new Date().toISOString().slice(0, 10)}.json`;
-      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      setProgress(0.8);
       
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backupData, null, 2));
+      // 处理不同平台的文件保存
+      try {
+        if (Platform.OS === 'web' && typeof document !== 'undefined') {
+          // 在 Web 平台上使用下载方式
+          console.log('在 Web 平台上备份数据');
+          try {
+            const jsonString = JSON.stringify(backupData, null, 2);
+            const blob = new Blob([jsonString], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `加班记录备份_${new Date().toISOString().slice(0, 10)}.json`;
+            link.click();
+            URL.revokeObjectURL(url);
+          } catch (blobError) {
+            console.error('Blob 创建失败:', blobError);
+            // 降级：使用 data URL 直接下载
+            const jsonString = JSON.stringify(backupData, null, 2);
+            const dataUrl = `data:application/json;charset=utf-8,${encodeURIComponent(jsonString)}`;
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = `加班记录备份_${new Date().toISOString().slice(0, 10)}.json`;
+            link.click();
+          }
+        } else {
+          // 在移动平台上使用 FileSystem 或直接分享
+          console.log('在移动平台上备份数据');
+          const fileName = `加班记录备份_${new Date().toISOString().slice(0, 10)}.json`;
+          const jsonString = JSON.stringify(backupData, null, 2);
+          
+          // 尝试不同的存储位置
+          const directories = [
+            FileSystem.documentDirectory,
+            FileSystem.cacheDirectory
+          ];
+          
+          let saved = false;
+          for (const directory of directories) {
+            if (directory) {
+              try {
+                console.log(`尝试使用目录: ${directory}`);
+                const fileUri = `${directory}${fileName}`;
+                
+                await FileSystem.writeAsStringAsync(fileUri, jsonString);
+                
+                // 分享备份文件
+                if (await Sharing.isAvailableAsync()) {
+                  await Sharing.shareAsync(fileUri);
+                  saved = true;
+                  break;
+                } else {
+                  Alert.alert('提示', `备份文件已保存到: ${fileUri}`);
+                  saved = true;
+                  break;
+                }
+              } catch (dirError) {
+                console.error(`目录 ${directory} 保存失败:`, dirError);
+                // 继续尝试下一个目录
+              }
+            }
+          }
+          
+          if (!saved) {
+            Alert.alert(
+              '备份失败',
+              '无法保存备份文件，请尝试以下方法：\n1. 确保应用有存储权限\n2. 检查设备存储空间是否充足\n3. 尝试在Web浏览器中打开应用备份数据',
+              [{ text: '确定', style: 'default' }]
+            );
+          }
+        }
+      } catch (platformError) {
+        console.error('平台特定保存失败:', platformError);
+        // 最终降级方案：显示错误信息并提供替代方案
+        Alert.alert(
+          '备份失败',
+          '无法保存备份文件，请尝试以下方法：\n1. 确保应用有存储权限\n2. 检查设备存储空间是否充足\n3. 尝试在Web浏览器中打开应用备份数据\n4. 尝试使用QQ等应用分享数据',
+          [{ text: '确定', style: 'default' }]
+        );
+        throw platformError;
+      }
+      
       setProgress(1);
       
-      // 分享备份文件
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri);
-      } else {
-        Alert.alert('提示', `备份文件已保存到: ${fileUri}`);
-      }
+      Alert.alert('成功', '数据备份成功');
     } catch (error) {
       console.error('备份数据失败:', error);
       Alert.alert('错误', '备份数据失败，请重试');
@@ -316,7 +460,7 @@ const SettingsScreen = () => {
         <Card.Content>
           <List.Item
             title="下班提醒"
-            description="下班后提醒打卡"
+            description="下班前30分钟提醒打卡"
             left={props => <List.Icon {...props} icon="bell" />}
             right={props => (
               <Switch
@@ -324,9 +468,12 @@ const SettingsScreen = () => {
                 onValueChange={async (value) => {
                   await updateSettings({ reminderEnabled: value });
                   if (value) {
-                    await notificationService.scheduleOffWorkReminder(settings);
+                    // 开启提醒，默认下班前30分钟提醒
+                    await notificationService.scheduleOffWorkReminder(30);
+                    Alert.alert('提醒已开启', '将在下班前30分钟提醒您打卡');
                   } else {
                     await notificationService.cancelAllNotifications();
+                    Alert.alert('提醒已关闭', '下班打卡提醒已取消');
                   }
                 }}
                 color="#1E3A5F"
