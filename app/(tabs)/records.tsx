@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Button, Card, Text, TextInput, Modal, IconButton } from 'react-native-paper';
+import { Button, Card, Text, TextInput, Modal, IconButton, Chip } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { formatDate, getWeekday } from '../../utils/date';
 import { minutesToHours } from '../../utils/time';
 import { useOvertimeStore } from '../../stores/overtimeStore';
 import { useSettingsStore } from '../../stores/settingsStore';
+import CalendarView from '../../components/CalendarView';
 
 const RecordsScreen = () => {
   const insets = useSafeAreaInsets();
+  const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
   const [modalVisible, setModalVisible] = useState(false);
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -202,80 +204,124 @@ const RecordsScreen = () => {
         ) : (
           <>
             <Text style={styles.headerTitle}>打卡记录</Text>
-            <IconButton
-              icon="plus"
-              size={24}
-              onPress={() => setModalVisible(true)}
-            />
+            <View style={styles.headerActions}>
+              <IconButton
+                icon="calendar-month"
+                size={24}
+                onPress={() => setViewMode(viewMode === 'list' ? 'calendar' : 'list')}
+              />
+              <IconButton
+                icon="plus"
+                size={24}
+                onPress={() => setModalVisible(true)}
+              />
+            </View>
           </>
         )}
       </View>
       
-      {/* 记录列表 */}
-      <ScrollView contentContainerStyle={styles.contentContainer}>
-        {Object.entries(groupedRecords).length === 0 ? (
-          <Text style={styles.emptyText}>暂无记录</Text>
-        ) : (
-          Object.entries(groupedRecords).map(([month, monthRecords]) => (
-            <View key={month} style={styles.monthGroup}>
-              <Text style={styles.monthTitle}>{month}</Text>
-              {monthRecords.map((record) => (
-                <Card 
-                  key={record.id} 
-                  style={[styles.recordCard, selectedRecords.includes(record.id) && styles.selectedRecordCard]}
-                  onLongPress={() => !isSelectionMode && handleLongPress(record.id)}
-                  onPress={() => isSelectionMode && handleSelectRecord(record.id)}
-                >
-                  <Card.Content>
-                    {isSelectionMode && (
-                      <View style={styles.selectionIndicator}>
-                        <IconButton
-                          icon={selectedRecords.includes(record.id) ? "checkbox-marked" : "checkbox-blank-outline"}
-                          size={20}
-                          onPress={() => handleSelectRecord(record.id)}
-                        />
+      {/* 视图模式切换 */}
+      {!isSelectionMode && (
+        <View style={styles.viewModeContainer}>
+          <Chip
+            selected={viewMode === 'list'}
+            onPress={() => setViewMode('list')}
+            style={styles.viewModeChip}
+            icon="format-list-bulleted"
+          >
+            列表
+          </Chip>
+          <Chip
+            selected={viewMode === 'calendar'}
+            onPress={() => setViewMode('calendar')}
+            style={styles.viewModeChip}
+            icon="calendar-month"
+          >
+            日历
+          </Chip>
+        </View>
+      )}
+      
+      {/* 内容区域 */}
+      {viewMode === 'list' ? (
+        /* 记录列表 */
+        <ScrollView contentContainerStyle={styles.contentContainer}>
+          {Object.entries(groupedRecords).length === 0 ? (
+            <Text style={styles.emptyText}>暂无记录</Text>
+          ) : (
+            Object.entries(groupedRecords).map(([month, monthRecords]) => (
+              <View key={month} style={styles.monthGroup}>
+                <Text style={styles.monthTitle}>{month}</Text>
+                {monthRecords.map((record) => (
+                  <Card 
+                    key={record.id} 
+                    style={[styles.recordCard, selectedRecords.includes(record.id) && styles.selectedRecordCard]}
+                    onLongPress={() => !isSelectionMode && handleLongPress(record.id)}
+                    onPress={() => isSelectionMode && handleSelectRecord(record.id)}
+                  >
+                    <Card.Content>
+                      {isSelectionMode && (
+                        <View style={styles.selectionIndicator}>
+                          <IconButton
+                            icon={selectedRecords.includes(record.id) ? "checkbox-marked" : "checkbox-blank-outline"}
+                            size={20}
+                            onPress={() => handleSelectRecord(record.id)}
+                          />
+                        </View>
+                      )}
+                      <View style={styles.recordHeader}>
+                        <Text style={styles.recordDate}>
+                          {record.date} {getWeekday(new Date(record.date))}
+                        </Text>
+                        <Text style={styles.recordTime}>{record.punchTime}</Text>
                       </View>
-                    )}
-                    <View style={styles.recordHeader}>
-                      <Text style={styles.recordDate}>
-                        {record.date} {getWeekday(new Date(record.date))}
+                      <Text style={styles.recordDuration}>
+                        加班时长: {minutesToHours(record.overtimeMinutes)} 小时
                       </Text>
-                      <Text style={styles.recordTime}>{record.punchTime}</Text>
-                    </View>
-                    <Text style={styles.recordDuration}>
-                      加班时长: {minutesToHours(record.overtimeMinutes)} 小时
-                    </Text>
-                    <Text style={styles.recordReason} numberOfLines={2}>
-                      理由: {record.reason}
-                    </Text>
-                    {record.isMakeup && (
-                      <Text style={styles.makeupTag}>补卡</Text>
-                    )}
-                    {!isSelectionMode && (
-                      <View style={styles.recordActions}>
-                        <Button
-                          mode="text"
-                          style={styles.actionButton}
-                          onPress={() => handleEdit(record)}
-                        >
-                          编辑
-                        </Button>
-                        <Button
-                          mode="text"
-                          style={styles.actionButton}
-                          onPress={() => handleDelete(record.id)}
-                        >
-                          删除
-                        </Button>
-                      </View>
-                    )}
-                  </Card.Content>
-                </Card>
-              ))}
-            </View>
-          ))
-        )}
-      </ScrollView>
+                      <Text style={styles.recordReason} numberOfLines={2}>
+                        理由: {record.reason}
+                      </Text>
+                      {record.isMakeup && (
+                        <Text style={styles.makeupTag}>补卡</Text>
+                      )}
+                      {!isSelectionMode && (
+                        <View style={styles.recordActions}>
+                          <Button
+                            mode="text"
+                            style={styles.actionButton}
+                            onPress={() => handleEdit(record)}
+                          >
+                            编辑
+                          </Button>
+                          <Button
+                            mode="text"
+                            style={styles.actionButton}
+                            onPress={() => handleDelete(record.id)}
+                          >
+                            删除
+                          </Button>
+                        </View>
+                      )}
+                    </Card.Content>
+                  </Card>
+                ))}
+              </View>
+            ))
+          )}
+        </ScrollView>
+      ) : (
+        /* 日历视图 */
+        <CalendarView 
+          records={records}
+          onDatePress={(dateStr) => {
+            // 点击日期时，如果有记录则显示详情
+            const record = records.find(r => r.date === dateStr);
+            if (record) {
+              handleEdit(record);
+            }
+          }}
+        />
+      )}
       
       {/* 补打卡弹窗 */}
       <Modal
@@ -446,9 +492,21 @@ const styles = StyleSheet.create({
   },
   headerActions: {
     flexDirection: 'row',
+    alignItems: 'center',
   },
   headerButton: {
     marginLeft: 8,
+  },
+  viewModeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    backgroundColor: 'white',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E0E0E0',
+  },
+  viewModeChip: {
+    marginHorizontal: 8,
   },
   selectedRecordCard: {
     backgroundColor: '#E3F2FD',
